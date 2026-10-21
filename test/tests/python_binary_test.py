@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import subprocess
 import sys
+from pathlib import Path
 
 import aqt.package
 import pytest
 
+from ankimorphs.morphemizers import python_binary
 from ankimorphs.morphemizers.python_binary import get_python_binary
 
 
@@ -64,3 +67,89 @@ def test_python_based_install_uses_the_running_interpreter(
     monkeypatch.delattr(aqt.package, "venv_binary", raising=False)
     monkeypatch.setattr(sys, "executable", executable)
     assert get_python_binary() == executable
+
+
+SAME_VERSION = (sys.version_info.major, sys.version_info.minor)
+OTHER_VERSION = (SAME_VERSION[0], SAME_VERSION[1] + 1)
+
+
+def _fake_run(versions: dict[str, tuple[int, int] | Exception]):
+    """Returns a subprocess.run stand-in that reports a version per executable."""
+
+    def run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        outcome = versions[cmd[0]]
+        if isinstance(outcome, Exception):
+            raise outcome
+        return subprocess.CompletedProcess(cmd, 0, stdout=f"{outcome}\n")
+
+    return run
+
+
+@pytest.fixture(name="isolated_search")
+def fixture_isolated_search(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> Path:
+    """No PATH hit, and uv's install dir pointed at an empty tmp dir."""
+    monkeypatch.setattr(python_binary.shutil, "which", lambda _name: None)
+    monkeypatch.setenv("UV_PYTHON_INSTALL_DIR", str(tmp_path))
+    monkeypatch.setattr(python_binary.os.path, "expanduser", lambda _p: "")
+    monkeypatch.setattr(python_binary.os.path, "expandvars", lambda _p: "")
+    return tmp_path
+
+
+def test_external_python_found_on_path(
+    monkeypatch: pytest.MonkeyPatch, isolated_search: Path
+) -> None:
+    on_path = "/opt/homebrew/bin/python3.13"
+    monkeypatch.setattr(python_binary.shutil, "which", lambda _name: on_path)
+    monkeypatch.setattr(
+        python_binary.subprocess, "run", _fake_run({on_path: SAME_VERSION})
+    )
+    assert python_binary._find_matching_external_python() == on_path
+
+
+def test_external_python_found_in_uv_dir(
+    monkeypatch: pytest.MonkeyPatch, isolated_search: Path
+) -> None:
+    uv_python = isolated_search / f"cpython-{SAME_VERSION[0]}.{SAME_VERSION[1]}.5-macos-aarch64-none" / "bin" / "python3"
+    uv_python.parent.mkdir(parents=True)
+    uv_python.touch()
+    monkeypatch.setattr(
+        python_binary.subprocess, "run", _fake_run({str(uv_python): SAME_VERSION})
+    )
+    assert python_binary._find_matching_external_python() == str(uv_python)
+
+
+def test_external_python_with_wrong_version_is_rejected(
+    monkeypatch: pytest.MonkeyPatch, isolated_search: Path
+) -> None:
+    # e.g. a 'python3.13' shim that actually resolves to another version
+    on_path = "/usr/local/bin/python3.13"
+    monkeypatch.setattr(python_binary.shutil, "which", lambda _name: on_path)
+    monkeypatch.setattr(
+        python_binary.subprocess, "run", _fake_run({on_path: OTHER_VERSION})
+    )
+    assert python_binary._find_matching_external_python() is None
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        OSError("exec format error"),
+        subprocess.CalledProcessError(1, "python"),
+        subprocess.TimeoutExpired("python", 10),
+    ],
+)
+def test_broken_external_python_is_skipped(
+    monkeypatch: pytest.MonkeyPatch, isolated_search: Path, failure: Exception
+) -> None:
+    broken = "/usr/local/bin/python3.13"
+    monkeypatch.setattr(python_binary.shutil, "which", lambda _name: broken)
+    monkeypatch.setattr(
+        python_binary.subprocess, "run", _fake_run({broken: failure})
+    )
+    assert python_binary._find_matching_external_python() is None
+
+
+def test_no_external_python_available(isolated_search: Path) -> None:
+    assert python_binary._find_matching_external_python() is None
