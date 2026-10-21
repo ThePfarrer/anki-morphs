@@ -143,9 +143,10 @@ def create_camel_venv() -> None:
     if python_path is None:
         raise ValueError(
             "Could not find a python interpreter to create the CAMeL Tools"
-            " environment with. Anki 26.x is distributed as a self-contained app"
-            " that does not include one, so installing CAMeL Tools currently"
-            " requires Anki 25.09.x."
+            " environment with. Install python"
+            f" {sys.version_info.major}.{sys.version_info.minor} (e.g. with"
+            f" 'uv python install {sys.version_info.major}.{sys.version_info.minor}')"
+            " and try again."
         )
 
     subprocess.run([python_path, "-m", "venv", camel_venv_path], check=True)

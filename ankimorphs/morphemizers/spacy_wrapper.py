@@ -180,7 +180,10 @@ def create_spacy_venv() -> None:
         raise ValueError(
             "Could not find a python interpreter to create the spaCy environment"
             " with. Anki 26.x is distributed as a self-contained app that does not"
-            " include one, so installing spaCy currently requires Anki 25.09.x."
+            " include one. Install python"
+            f" {sys.version_info.major}.{sys.version_info.minor} (e.g. with"
+            f" 'uv python install {sys.version_info.major}.{sys.version_info.minor}')"
+            " and try again."
         )
 
     subprocess.run([python_path, "-m", "venv", spacy_venv_path], check=True)

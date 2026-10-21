@@ -31,7 +31,24 @@ def test_self_contained_build_has_no_interpreter(
     # frozen binary we cannot create a venv with
     monkeypatch.delattr(aqt.package, "venv_binary", raising=False)
     monkeypatch.setattr(sys, "executable", executable)
+    monkeypatch.setattr(
+        "ankimorphs.morphemizers.python_binary._find_matching_external_python",
+        lambda: None,
+    )
     assert get_python_binary() is None
+
+
+def test_self_contained_build_uses_matching_external_python(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delattr(aqt.package, "venv_binary", raising=False)
+    monkeypatch.setattr(sys, "executable", "/Applications/Anki.app/Contents/MacOS/Anki")
+    external = "/home/user/.local/share/uv/python/cpython-3.13.5/bin/python3"
+    monkeypatch.setattr(
+        "ankimorphs.morphemizers.python_binary._find_matching_external_python",
+        lambda: external,
+    )
+    assert get_python_binary() == external
 
 
 @pytest.mark.parametrize(
