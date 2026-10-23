@@ -58,8 +58,12 @@ def _find_matching_external_python() -> str | None:
         os.path.expandvars(r"%APPDATA%\uv\python"),
     ]
     for uv_dir in filter(None, uv_dirs):
-        candidates += sorted(glob.glob(os.path.join(uv_dir, f"cpython-{version}.*", "bin", "python3")))
-        candidates += sorted(glob.glob(os.path.join(uv_dir, f"cpython-{version}.*", "python.exe")))
+        candidates += sorted(
+            glob.glob(os.path.join(uv_dir, f"cpython-{version}.*", "bin", "python3"))
+        )
+        candidates += sorted(
+            glob.glob(os.path.join(uv_dir, f"cpython-{version}.*", "python.exe"))
+        )
 
     for candidate in candidates:
         try:

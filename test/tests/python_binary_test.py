@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import aqt.package
@@ -73,7 +76,9 @@ SAME_VERSION = (sys.version_info.major, sys.version_info.minor)
 OTHER_VERSION = (SAME_VERSION[0], SAME_VERSION[1] + 1)
 
 
-def _fake_run(versions: dict[str, tuple[int, int] | Exception]):
+def _fake_run(
+    versions: dict[str, tuple[int, int] | Exception],
+) -> Callable[..., subprocess.CompletedProcess[str]]:
     """Returns a subprocess.run stand-in that reports a version per executable."""
 
     def run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -86,49 +91,46 @@ def _fake_run(versions: dict[str, tuple[int, int] | Exception]):
 
 
 @pytest.fixture(name="isolated_search")
-def fixture_isolated_search(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> Path:
+def fixture_isolated_search(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     """No PATH hit, and uv's install dir pointed at an empty tmp dir."""
-    monkeypatch.setattr(python_binary.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
     monkeypatch.setenv("UV_PYTHON_INSTALL_DIR", str(tmp_path))
-    monkeypatch.setattr(python_binary.os.path, "expanduser", lambda _p: "")
-    monkeypatch.setattr(python_binary.os.path, "expandvars", lambda _p: "")
+    monkeypatch.setattr(os.path, "expanduser", lambda _p: "")
+    monkeypatch.setattr(os.path, "expandvars", lambda _p: "")
     return tmp_path
 
 
-def test_external_python_found_on_path(
+def test_external_python_found_on_path(  # pylint: disable=unused-argument
     monkeypatch: pytest.MonkeyPatch, isolated_search: Path
 ) -> None:
     on_path = "/opt/homebrew/bin/python3.13"
-    monkeypatch.setattr(python_binary.shutil, "which", lambda _name: on_path)
-    monkeypatch.setattr(
-        python_binary.subprocess, "run", _fake_run({on_path: SAME_VERSION})
-    )
+    monkeypatch.setattr(shutil, "which", lambda _name: on_path)
+    monkeypatch.setattr(subprocess, "run", _fake_run({on_path: SAME_VERSION}))
     assert python_binary._find_matching_external_python() == on_path
 
 
 def test_external_python_found_in_uv_dir(
     monkeypatch: pytest.MonkeyPatch, isolated_search: Path
 ) -> None:
-    uv_python = isolated_search / f"cpython-{SAME_VERSION[0]}.{SAME_VERSION[1]}.5-macos-aarch64-none" / "bin" / "python3"
+    uv_python = (
+        isolated_search
+        / f"cpython-{SAME_VERSION[0]}.{SAME_VERSION[1]}.5-macos-aarch64-none"
+        / "bin"
+        / "python3"
+    )
     uv_python.parent.mkdir(parents=True)
     uv_python.touch()
-    monkeypatch.setattr(
-        python_binary.subprocess, "run", _fake_run({str(uv_python): SAME_VERSION})
-    )
+    monkeypatch.setattr(subprocess, "run", _fake_run({str(uv_python): SAME_VERSION}))
     assert python_binary._find_matching_external_python() == str(uv_python)
 
 
-def test_external_python_with_wrong_version_is_rejected(
+def test_external_python_with_wrong_version_is_rejected(  # pylint: disable=unused-argument
     monkeypatch: pytest.MonkeyPatch, isolated_search: Path
 ) -> None:
     # e.g. a 'python3.13' shim that actually resolves to another version
     on_path = "/usr/local/bin/python3.13"
-    monkeypatch.setattr(python_binary.shutil, "which", lambda _name: on_path)
-    monkeypatch.setattr(
-        python_binary.subprocess, "run", _fake_run({on_path: OTHER_VERSION})
-    )
+    monkeypatch.setattr(shutil, "which", lambda _name: on_path)
+    monkeypatch.setattr(subprocess, "run", _fake_run({on_path: OTHER_VERSION}))
     assert python_binary._find_matching_external_python() is None
 
 
@@ -140,16 +142,16 @@ def test_external_python_with_wrong_version_is_rejected(
         subprocess.TimeoutExpired("python", 10),
     ],
 )
-def test_broken_external_python_is_skipped(
+def test_broken_external_python_is_skipped(  # pylint: disable=unused-argument
     monkeypatch: pytest.MonkeyPatch, isolated_search: Path, failure: Exception
 ) -> None:
     broken = "/usr/local/bin/python3.13"
-    monkeypatch.setattr(python_binary.shutil, "which", lambda _name: broken)
-    monkeypatch.setattr(
-        python_binary.subprocess, "run", _fake_run({broken: failure})
-    )
+    monkeypatch.setattr(shutil, "which", lambda _name: broken)
+    monkeypatch.setattr(subprocess, "run", _fake_run({broken: failure}))
     assert python_binary._find_matching_external_python() is None
 
 
-def test_no_external_python_available(isolated_search: Path) -> None:
+def test_no_external_python_available(  # pylint: disable=unused-argument
+    isolated_search: Path,
+) -> None:
     assert python_binary._find_matching_external_python() is None
